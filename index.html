@@ -3,48 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Greptile Web App</title>
+    <title>Grid Animation</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <header>
-        <h1>Welcome to Greptile</h1>
-        <nav>
-            <ul>
-                <li><a href="#">Home</a></li>
-                <li><a href="#">About</a></li>
-                <li><a href="#">Contact</a></li>
-            </ul>
-        </nav>
-    </header>
-
-    <main>
-        <section class="hero">
-            <h2>Your Awesome Web Application</h2>
-            <p>This is a simple boilerplate to get you started.</p>
-            <button id="cta-button">Get Started</button>
-        </section>
-
-        <section class="features">
-            <div class="feature">
-                <h3>Feature 1</h3>
-                <p>Description of your first amazing feature.</p>
-            </div>
-            <div class="feature">
-                <h3>Feature 2</h3>
-                <p>Description of your second amazing feature.</p>
-            </div>
-            <div class="feature">
-                <h3>Feature 3</h3>
-                <p>Description of your third amazing feature.</p>
-            </div>
-        </section>
-    </main>
-
-    <footer>
-        <p>&copy; 2023 Greptile. All rights reserved.</p>
-    </footer>
-
+    <div class="container">
+        <div id="grid"></div>
+        <canvas id="particleCanvas"></canvas>
+    </div>
     <script src="script.js"></script>
 </body>
 </html> 

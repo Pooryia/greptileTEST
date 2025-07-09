@@ -1,4 +1,3 @@
-/* Reset and base styles */
 * {
     margin: 0;
     padding: 0;
@@ -6,125 +5,279 @@
 }
 
 body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    line-height: 1.6;
-    color: #333;
-    background-color: #f8f9fa;
-}
-
-a {
-    text-decoration: none;
-    color: #0066cc;
-}
-
-a:hover {
-    text-decoration: underline;
-}
-
-/* Header styles */
-header {
-    background-color: #ffffff;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-    padding: 1rem 2rem;
-}
-
-header h1 {
-    color: #333;
-    margin-bottom: 1rem;
-}
-
-nav ul {
     display: flex;
-    list-style: none;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background-color: #111;
 }
 
-nav ul li {
-    margin-right: 1.5rem;
+.container {
+    position: relative;
+    width: 90vmin;
+    height: 90vmin;
+    max-width: 600px;
+    max-height: 600px;
+    overflow: hidden;
 }
 
-/* Main content styles */
-main {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 2rem;
+#particleCanvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 20;
+    pointer-events: none;
 }
 
-.hero {
-    text-align: center;
-    padding: 3rem 1rem;
-    margin-bottom: 2rem;
-    background-color: #e9ecef;
-    border-radius: 8px;
-}
-
-.hero h2 {
-    font-size: 2.5rem;
-    margin-bottom: 1rem;
-    color: #212529;
-}
-
-.hero p {
-    font-size: 1.2rem;
-    margin-bottom: 1.5rem;
-    color: #495057;
-}
-
-#cta-button {
-    background-color: #0066cc;
-    color: white;
-    border: none;
-    padding: 0.75rem 1.5rem;
-    font-size: 1rem;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background-color 0.3s;
-}
-
-#cta-button:hover {
-    background-color: #0055aa;
-}
-
-/* Features section */
-.features {
+#grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 2rem;
-    margin-top: 3rem;
+    grid-template-columns: repeat(9, 1fr);
+    grid-template-rows: repeat(9, 1fr);
+    width: 100%;
+    height: 100%;
+    position: relative;
+    z-index: 5; /* Lower z-index to ensure gradient is visible through transparent cells */
+    transform-style: preserve-3d; /* Ensure 3D transforms work properly */
 }
 
-.feature {
-    background-color: #ffffff;
-    padding: 1.5rem;
-    border-radius: 8px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+.cell {
+    background-color: #000;
+    border: 1px solid #222;
+    transition: transform 0.8s ease, background-color 0.8s ease, opacity 0.8s ease;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transform-style: preserve-3d;
+    backface-visibility: visible; /* Changed to visible to ensure cells remain clickable */
+    z-index: 10; /* Ensure cells are above the gradient */
 }
 
-.feature h3 {
-    margin-bottom: 1rem;
-    color: #212529;
+.cell::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    transition: opacity 0.8s ease, transform 0.8s ease;
+    z-index: -1;
+    transform: rotateY(180deg);
+    background: transparent; /* Remove any default background */
+    pointer-events: none; /* Ensure clicks pass through to the cell */
 }
 
-/* Footer styles */
-footer {
-    text-align: center;
-    padding: 2rem;
-    background-color: #212529;
-    color: #f8f9fa;
-    margin-top: 3rem;
+.cell.flipped {
+    transform: rotateY(180deg);
+    background-color: rgba(0, 0, 0, 0); /* Fully transparent */
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.1);
+    pointer-events: auto; /* Ensure flipped cells remain clickable */
 }
 
-/* Responsive styles */
-@media (max-width: 768px) {
-    nav ul {
-        flex-direction: column;
+.cell.flipped::before {
+    opacity: 0.9;
+}
+
+.cell:hover {
+    transform: scale(1.05);
+    z-index: 20;
+    box-shadow: 0 0 15px rgba(138, 43, 226, 0.5);
+}
+
+.cell.flipped:hover {
+    transform: rotateY(180deg) scale(1.05);
+}
+
+/* Particle container for each cell */
+.particles-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 30;
+    overflow: visible;
+}
+
+/* Individual particle styles */
+.particle {
+    position: absolute;
+    border-radius: 50%;
+    background-color: rgba(255, 255, 255, 0.8);
+    pointer-events: none;
+    box-shadow: 0 0 10px 2px rgba(255, 255, 255, 0.5);
+    opacity: 0;
+}
+
+/* Smoke particle */
+.smoke {
+    position: absolute;
+    border-radius: 50%;
+    background: radial-gradient(circle at center, rgba(255, 255, 255, 0.8) 0%, rgba(138, 43, 226, 0.2) 70%, transparent 100%);
+    filter: blur(5px);
+    opacity: 0;
+}
+
+/* Glow effect for particles */
+.glow {
+    position: absolute;
+    border-radius: 50%;
+    background: transparent;
+    box-shadow: 0 0 20px 10px rgba(138, 43, 226, 0.7);
+    opacity: 0;
+}
+
+.container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, #2c1654 0%, #341c6a 25%, #3a1b7a 50%, #4b1b8a 75%, #5a1b9a 100%);
+    z-index: 1; /* Lower z-index to be below cells */
+    animation: gradient-shift 8s infinite alternate;
+    background-size: 100% 100%;
+    pointer-events: none; /* Allow clicks to pass through */
+}
+
+@keyframes gradient-shift {
+    0% {
+        background: linear-gradient(135deg, #2c1654 0%, #341c6a 25%, #3a1b7a 50%, #4b1b8a 75%, #5a1b9a 100%);
+        filter: hue-rotate(0deg) brightness(1);
+        box-shadow: 0 0 30px #2c1654;
     }
-    
-    nav ul li {
-        margin-right: 0;
-        margin-bottom: 0.5rem;
+    50% {
+        background: linear-gradient(135deg, #2c1654 0%, #341c6a 25%, #3a1b7a 50%, #4b1b8a 75%, #5a1b9a 100%);
+        filter: hue-rotate(-10deg) brightness(1.1);
+        box-shadow: 0 0 40px #341c6a;
     }
-    
-    .features {
-        grid-template-columns: 1fr;
+    100% {
+        background: linear-gradient(135deg, #2c1654 0%, #341c6a 25%, #3a1b7a 50%, #4b1b8a 75%, #5a1b9a 100%);
+        filter: hue-rotate(10deg) brightness(0.9);
+        box-shadow: 0 0 50px #3a1b7a;
+    }
+}
+
+@keyframes rotate-scale {
+    0% {
+        transform: rotate(0deg) scale(1);
+    }
+    50% {
+        transform: rotate(180deg) scale(0.9);
+    }
+    100% {
+        transform: rotate(360deg) scale(1);
+    }
+}
+
+@keyframes flip-in {
+    0% {
+        transform: rotateX(0deg);
+    }
+    100% {
+        transform: rotateX(180deg);
+    }
+}
+
+@keyframes spin-out {
+    0% {
+        transform: rotate(0deg) scale(1);
+    }
+    100% {
+        transform: rotate(720deg) scale(0);
+    }
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.1);
+        opacity: 0.8;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+@keyframes particle-fade {
+    0% {
+        transform: translate(0, 0) scale(0.2);
+        opacity: 1;
+    }
+    100% {
+        transform: translate(var(--tx), var(--ty)) scale(0);
+        opacity: 0;
+    }
+}
+
+@keyframes smoke-rise {
+    0% {
+        transform: translate(0, 0) scale(0.2);
+        opacity: 0.8;
+    }
+    50% {
+        opacity: 0.5;
+    }
+    100% {
+        transform: translate(var(--tx), var(--ty)) scale(2);
+        opacity: 0;
+    }
+}
+
+@keyframes glow-pulse {
+    0% {
+        transform: scale(0.2);
+        opacity: 0.8;
+    }
+    50% {
+        transform: scale(1.5);
+        opacity: 0.4;
+    }
+    100% {
+        transform: scale(2);
+        opacity: 0;
+    }
+}
+
+@keyframes sparkle {
+    0%, 100% {
+        opacity: 0;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
+@keyframes ripple {
+    0% {
+        transform: scale(0.1);
+        opacity: 1;
+        border-width: 15px;
+    }
+    100% {
+        transform: scale(2);
+        opacity: 0;
+        border-width: 1px;
+    }
+}
+
+@keyframes float {
+    0% {
+        transform: translateY(0) rotate(0deg);
+    }
+    50% {
+        transform: translateY(var(--float-y)) rotate(var(--float-r));
+    }
+    100% {
+        transform: translateY(0) rotate(0deg);
     }
 } 
