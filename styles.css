@@ -1,7 +1,60 @@
-* {
+/* ===== CSS CUSTOM PROPERTIES ===== */
+:root {
+    /* Grid Configuration */
+    --grid-size: 9;
+    --grid-gap: 1px;
+    
+    /* Colors */
+    --bg-dark: #111;
+    --cell-bg: #000;
+    --cell-border: #222;
+    --cell-border-hover: rgba(255, 255, 255, 0.1);
+    --cell-shadow: rgba(255, 255, 255, 0.2);
+    --particle-white: rgba(255, 255, 255, 0.8);
+    --particle-glow: rgba(138, 43, 226, 0.7);
+    --gradient-1: #2c1654;
+    --gradient-2: #341c6a;
+    --gradient-3: #3a1b7a;
+    --gradient-4: #4b1b8a;
+    --gradient-5: #5a1b9a;
+    --control-bg: rgba(0, 0, 0, 0.8);
+    --control-border: rgba(255, 255, 255, 0.2);
+    --control-text: #fff;
+    --progress-bg: rgba(255, 255, 255, 0.1);
+    --progress-fill: var(--particle-glow);
+    
+    /* Animations */
+    --transition-duration: 0.8s;
+    --transition-easing: cubic-bezier(0.4, 0, 0.2, 1);
+    --hover-scale: 1.05;
+    --flip-perspective: 1000px;
+    
+    /* Sizing */
+    --container-size: 90vmin;
+    --container-max: 600px;
+    --particle-size-min: 4px;
+    --particle-size-max: 12px;
+    --smoke-size-min: 20px;
+    --smoke-size-max: 50px;
+    --glow-size-min: 40px;
+    --glow-size-max: 100px;
+    --control-size: 40px;
+    --control-gap: 8px;
+}
+
+/* ===== RESET AND BASE STYLES ===== */
+*,
+*::before,
+*::after {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+}
+
+html {
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
 }
 
 body {
@@ -9,18 +62,91 @@ body {
     justify-content: center;
     align-items: center;
     min-height: 100vh;
-    background-color: #111;
+    min-height: 100dvh; /* Dynamic viewport height for mobile */
+    background-color: var(--bg-dark);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    touch-action: manipulation;
 }
 
+/* ===== ACCESSIBILITY STYLES ===== */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.skip-link {
+    position: absolute;
+    top: -40px;
+    left: 6px;
+    background: var(--control-bg);
+    color: var(--control-text);
+    padding: 8px;
+    text-decoration: none;
+    border-radius: 4px;
+    z-index: 1000;
+    transition: top 0.3s;
+}
+
+.skip-link:focus {
+    top: 6px;
+}
+
+/* ===== MAIN LAYOUT ===== */
+main {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+}
+
+/* ===== CONTAINER STYLES ===== */
 .container {
     position: relative;
-    width: 90vmin;
-    height: 90vmin;
-    max-width: 600px;
-    max-height: 600px;
+    width: var(--container-size);
+    height: var(--container-size);
+    max-width: var(--container-max);
+    max-height: var(--container-max);
     overflow: hidden;
+    border-radius: 8px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+    will-change: transform;
 }
 
+/* Animated gradient background */
+.container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, 
+        var(--gradient-1) 0%, 
+        var(--gradient-2) 25%, 
+        var(--gradient-3) 50%, 
+        var(--gradient-4) 75%, 
+        var(--gradient-5) 100%);
+    z-index: 1;
+    animation: gradient-shift 8s infinite alternate;
+    background-size: 100% 100%;
+    pointer-events: none;
+    will-change: filter, box-shadow;
+}
+
+/* ===== CANVAS STYLES ===== */
 #particleCanvas {
     position: absolute;
     top: 0;
@@ -29,31 +155,55 @@ body {
     height: 100%;
     z-index: 20;
     pointer-events: none;
+    will-change: contents;
 }
 
+/* ===== GRID STYLES ===== */
 #grid {
     display: grid;
-    grid-template-columns: repeat(9, 1fr);
-    grid-template-rows: repeat(9, 1fr);
+    grid-template-columns: repeat(var(--grid-size), 1fr);
+    grid-template-rows: repeat(var(--grid-size), 1fr);
+    gap: var(--grid-gap);
     width: 100%;
     height: 100%;
     position: relative;
-    z-index: 5; /* Lower z-index to ensure gradient is visible through transparent cells */
-    transform-style: preserve-3d; /* Ensure 3D transforms work properly */
+    z-index: 5;
+    transform-style: preserve-3d;
+    perspective: var(--flip-perspective);
 }
 
+#grid:focus {
+    outline: 2px solid var(--particle-glow);
+    outline-offset: 2px;
+}
+
+/* ===== CELL STYLES ===== */
 .cell {
-    background-color: #000;
-    border: 1px solid #222;
-    transition: transform 0.8s ease, background-color 0.8s ease, opacity 0.8s ease;
+    background-color: var(--cell-bg);
+    border: 1px solid var(--cell-border);
+    transition: 
+        transform var(--transition-duration) var(--transition-easing),
+        background-color var(--transition-duration) var(--transition-easing),
+        opacity var(--transition-duration) var(--transition-easing),
+        box-shadow var(--transition-duration) var(--transition-easing);
     cursor: pointer;
     position: relative;
     overflow: hidden;
     transform-style: preserve-3d;
-    backface-visibility: visible; /* Changed to visible to ensure cells remain clickable */
-    z-index: 10; /* Ensure cells are above the gradient */
+    backface-visibility: visible;
+    z-index: 10;
+    will-change: transform, background-color, opacity;
+    
+    /* Improve touch targets */
+    min-width: 44px;
+    min-height: 44px;
+    
+    /* Hardware acceleration */
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
 }
 
+/* Cell pseudo-element for flip effect */
 .cell::before {
     content: '';
     position: absolute;
@@ -62,36 +212,57 @@ body {
     width: 100%;
     height: 100%;
     opacity: 0;
-    transition: opacity 0.8s ease, transform 0.8s ease;
+    transition: 
+        opacity var(--transition-duration) var(--transition-easing),
+        transform var(--transition-duration) var(--transition-easing);
     z-index: -1;
     transform: rotateY(180deg);
-    background: transparent; /* Remove any default background */
-    pointer-events: none; /* Ensure clicks pass through to the cell */
+    background: transparent;
+    pointer-events: none;
+    will-change: opacity, transform;
 }
 
+/* Flipped cell state */
 .cell.flipped {
     transform: rotateY(180deg);
-    background-color: rgba(0, 0, 0, 0); /* Fully transparent */
-    box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
-    border-color: rgba(255, 255, 255, 0.1);
-    pointer-events: auto; /* Ensure flipped cells remain clickable */
+    background-color: rgba(0, 0, 0, 0);
+    box-shadow: 0 0 10px var(--cell-shadow);
+    border-color: var(--cell-border-hover);
+    pointer-events: auto;
 }
 
 .cell.flipped::before {
     opacity: 0.9;
 }
 
+/* Hover effects */
 .cell:hover {
-    transform: scale(1.05);
+    transform: scale(var(--hover-scale)) translateZ(0);
     z-index: 20;
-    box-shadow: 0 0 15px rgba(138, 43, 226, 0.5);
+    box-shadow: 0 0 15px var(--particle-glow);
 }
 
 .cell.flipped:hover {
-    transform: rotateY(180deg) scale(1.05);
+    transform: rotateY(180deg) scale(var(--hover-scale)) translateZ(0);
 }
 
-/* Particle container for each cell */
+/* Focus states for accessibility */
+.cell:focus {
+    outline: 2px solid var(--particle-glow);
+    outline-offset: 2px;
+}
+
+.cell:focus:not(:focus-visible) {
+    outline: none;
+}
+
+/* Active cell state for keyboard navigation */
+.cell.active {
+    outline: 3px solid var(--particle-glow);
+    outline-offset: 1px;
+}
+
+/* ===== PARTICLE CONTAINER ===== */
 .particles-container {
     position: absolute;
     top: 0;
@@ -101,149 +272,375 @@ body {
     pointer-events: none;
     z-index: 30;
     overflow: visible;
+    will-change: contents;
 }
 
-/* Individual particle styles */
+/* ===== PARTICLE STYLES ===== */
 .particle {
     position: absolute;
     border-radius: 50%;
-    background-color: rgba(255, 255, 255, 0.8);
+    background-color: var(--particle-white);
     pointer-events: none;
     box-shadow: 0 0 10px 2px rgba(255, 255, 255, 0.5);
     opacity: 0;
+    will-change: transform, opacity;
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
 }
 
-/* Smoke particle */
 .smoke {
     position: absolute;
     border-radius: 50%;
-    background: radial-gradient(circle at center, rgba(255, 255, 255, 0.8) 0%, rgba(138, 43, 226, 0.2) 70%, transparent 100%);
+    background: radial-gradient(circle at center, 
+        rgba(255, 255, 255, 0.8) 0%, 
+        var(--particle-glow) 70%, 
+        transparent 100%);
     filter: blur(5px);
+    -webkit-filter: blur(5px);
     opacity: 0;
+    will-change: transform, opacity;
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
 }
 
-/* Glow effect for particles */
 .glow {
     position: absolute;
     border-radius: 50%;
     background: transparent;
-    box-shadow: 0 0 20px 10px rgba(138, 43, 226, 0.7);
+    box-shadow: 0 0 20px 10px var(--particle-glow);
     opacity: 0;
+    will-change: transform, opacity;
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
 }
 
-.container::before {
-    content: '';
-    position: absolute;
+/* ===== CONTROLS STYLES ===== */
+.controls {
+    display: flex;
+    align-items: center;
+    gap: var(--control-gap);
+    padding: 12px;
+    background: var(--control-bg);
+    border: 1px solid var(--control-border);
+    border-radius: 12px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.controls button {
+    width: var(--control-size);
+    height: var(--control-size);
+    border: 1px solid var(--control-border);
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--control-text);
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    transition: all 0.3s ease;
+    outline: none;
+}
+
+.controls button:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(138, 43, 226, 0.3);
+}
+
+.controls button:focus {
+    outline: 2px solid var(--particle-glow);
+    outline-offset: 2px;
+}
+
+.controls button:active {
+    transform: scale(0.95);
+}
+
+.controls button[aria-pressed="true"] {
+    background: var(--particle-glow);
+    border-color: var(--particle-glow);
+}
+
+/* Progress indicator */
+.progress-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    color: var(--control-text);
+    font-size: 12px;
+    min-width: 80px;
+}
+
+.progress-text {
+    font-weight: 500;
+    text-align: center;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 4px;
+    background: var(--progress-bg);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: var(--progress-fill);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+    box-shadow: 0 0 8px var(--progress-fill);
+}
+
+/* ===== HELP PANEL ===== */
+.help-panel {
+    position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background: linear-gradient(135deg, #2c1654 0%, #341c6a 25%, #3a1b7a 50%, #4b1b8a 75%, #5a1b9a 100%);
-    z-index: 1; /* Lower z-index to be below cells */
-    animation: gradient-shift 8s infinite alternate;
-    background-size: 100% 100%;
-    pointer-events: none; /* Allow clicks to pass through */
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
 }
 
+.help-panel.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.help-content {
+    background: var(--control-bg);
+    border: 1px solid var(--control-border);
+    border-radius: 12px;
+    padding: 2rem;
+    max-width: 400px;
+    width: 90%;
+    color: var(--control-text);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+    transform: translateY(20px);
+    transition: transform 0.3s ease;
+}
+
+.help-panel.active .help-content {
+    transform: translateY(0);
+}
+
+.help-content h2 {
+    margin-bottom: 1rem;
+    color: var(--particle-glow);
+    font-size: 1.5rem;
+}
+
+.help-content ul {
+    list-style: none;
+    margin-bottom: 1.5rem;
+}
+
+.help-content li {
+    margin-bottom: 0.5rem;
+    padding-left: 1rem;
+    position: relative;
+}
+
+.help-content li::before {
+    content: '•';
+    color: var(--particle-glow);
+    position: absolute;
+    left: 0;
+}
+
+.help-content button {
+    background: var(--particle-glow);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    width: 100%;
+}
+
+.help-content button:hover {
+    background: #9333ea;
+    transform: translateY(-2px);
+}
+
+.help-content button:focus {
+    outline: 2px solid white;
+    outline-offset: 2px;
+}
+
+/* ===== NOSCRIPT FALLBACK ===== */
+.noscript-fallback {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    text-align: center;
+    color: white;
+    padding: 2rem;
+}
+
+.noscript-fallback h1 {
+    color: var(--particle-glow);
+    margin-bottom: 1rem;
+    font-size: 2rem;
+}
+
+.noscript-fallback p {
+    margin-bottom: 1rem;
+    max-width: 600px;
+    line-height: 1.6;
+}
+
+.static-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    gap: 4px;
+    width: 200px;
+    height: 200px;
+    margin-top: 2rem;
+}
+
+.static-cell {
+    background: var(--cell-bg);
+    border: 1px solid var(--cell-border);
+    border-radius: 4px;
+}
+
+/* ===== ANIMATIONS ===== */
 @keyframes gradient-shift {
     0% {
-        background: linear-gradient(135deg, #2c1654 0%, #341c6a 25%, #3a1b7a 50%, #4b1b8a 75%, #5a1b9a 100%);
+        background: linear-gradient(135deg, 
+            var(--gradient-1) 0%, 
+            var(--gradient-2) 25%, 
+            var(--gradient-3) 50%, 
+            var(--gradient-4) 75%, 
+            var(--gradient-5) 100%);
         filter: hue-rotate(0deg) brightness(1);
-        box-shadow: 0 0 30px #2c1654;
+        -webkit-filter: hue-rotate(0deg) brightness(1);
+        box-shadow: 0 0 30px var(--gradient-1);
     }
     50% {
-        background: linear-gradient(135deg, #2c1654 0%, #341c6a 25%, #3a1b7a 50%, #4b1b8a 75%, #5a1b9a 100%);
+        background: linear-gradient(135deg, 
+            var(--gradient-1) 0%, 
+            var(--gradient-2) 25%, 
+            var(--gradient-3) 50%, 
+            var(--gradient-4) 75%, 
+            var(--gradient-5) 100%);
         filter: hue-rotate(-10deg) brightness(1.1);
-        box-shadow: 0 0 40px #341c6a;
+        -webkit-filter: hue-rotate(-10deg) brightness(1.1);
+        box-shadow: 0 0 40px var(--gradient-2);
     }
     100% {
-        background: linear-gradient(135deg, #2c1654 0%, #341c6a 25%, #3a1b7a 50%, #4b1b8a 75%, #5a1b9a 100%);
+        background: linear-gradient(135deg, 
+            var(--gradient-1) 0%, 
+            var(--gradient-2) 25%, 
+            var(--gradient-3) 50%, 
+            var(--gradient-4) 75%, 
+            var(--gradient-5) 100%);
         filter: hue-rotate(10deg) brightness(0.9);
-        box-shadow: 0 0 50px #3a1b7a;
+        -webkit-filter: hue-rotate(10deg) brightness(0.9);
+        box-shadow: 0 0 50px var(--gradient-3);
     }
 }
 
 @keyframes rotate-scale {
     0% {
-        transform: rotate(0deg) scale(1);
+        transform: rotate(0deg) scale(1) translateZ(0);
     }
     50% {
-        transform: rotate(180deg) scale(0.9);
+        transform: rotate(180deg) scale(0.9) translateZ(0);
     }
     100% {
-        transform: rotate(360deg) scale(1);
+        transform: rotate(360deg) scale(1) translateZ(0);
     }
 }
 
 @keyframes flip-in {
     0% {
-        transform: rotateX(0deg);
+        transform: rotateX(0deg) translateZ(0);
     }
     100% {
-        transform: rotateX(180deg);
+        transform: rotateX(180deg) translateZ(0);
     }
 }
 
 @keyframes spin-out {
     0% {
-        transform: rotate(0deg) scale(1);
+        transform: rotate(0deg) scale(1) translateZ(0);
     }
     100% {
-        transform: rotate(720deg) scale(0);
+        transform: rotate(720deg) scale(0) translateZ(0);
     }
 }
 
 @keyframes pulse {
     0% {
-        transform: scale(1);
+        transform: scale(1) translateZ(0);
         opacity: 1;
     }
     50% {
-        transform: scale(1.1);
+        transform: scale(1.1) translateZ(0);
         opacity: 0.8;
     }
     100% {
-        transform: scale(1);
+        transform: scale(1) translateZ(0);
         opacity: 1;
     }
 }
 
 @keyframes particle-fade {
     0% {
-        transform: translate(0, 0) scale(0.2);
+        transform: translate(0, 0) scale(0.2) translateZ(0);
         opacity: 1;
     }
     100% {
-        transform: translate(var(--tx), var(--ty)) scale(0);
+        transform: translate(var(--tx), var(--ty)) scale(0) translateZ(0);
         opacity: 0;
     }
 }
 
 @keyframes smoke-rise {
     0% {
-        transform: translate(0, 0) scale(0.2);
+        transform: translate(0, 0) scale(0.2) translateZ(0);
         opacity: 0.8;
     }
     50% {
         opacity: 0.5;
     }
     100% {
-        transform: translate(var(--tx), var(--ty)) scale(2);
+        transform: translate(var(--tx), var(--ty)) scale(2) translateZ(0);
         opacity: 0;
     }
 }
 
 @keyframes glow-pulse {
     0% {
-        transform: scale(0.2);
+        transform: scale(0.2) translateZ(0);
         opacity: 0.8;
     }
     50% {
-        transform: scale(1.5);
+        transform: scale(1.5) translateZ(0);
         opacity: 0.4;
     }
     100% {
-        transform: scale(2);
+        transform: scale(2) translateZ(0);
         opacity: 0;
     }
 }
@@ -251,20 +648,22 @@ body {
 @keyframes sparkle {
     0%, 100% {
         opacity: 0;
+        transform: scale(0) translateZ(0);
     }
     50% {
         opacity: 1;
+        transform: scale(1) translateZ(0);
     }
 }
 
 @keyframes ripple {
     0% {
-        transform: scale(0.1);
+        transform: scale(0.1) translateZ(0);
         opacity: 1;
         border-width: 15px;
     }
     100% {
-        transform: scale(2);
+        transform: scale(2) translateZ(0);
         opacity: 0;
         border-width: 1px;
     }
@@ -272,12 +671,203 @@ body {
 
 @keyframes float {
     0% {
-        transform: translateY(0) rotate(0deg);
+        transform: translateY(0) rotate(0deg) translateZ(0);
     }
     50% {
-        transform: translateY(var(--float-y)) rotate(var(--float-r));
+        transform: translateY(var(--float-y, -20px)) rotate(var(--float-r, 5deg)) translateZ(0);
     }
     100% {
-        transform: translateY(0) rotate(0deg);
+        transform: translateY(0) rotate(0deg) translateZ(0);
+    }
+}
+
+/* ===== RESPONSIVE DESIGN ===== */
+@media (max-width: 768px) {
+    :root {
+        --container-size: 95vmin;
+        --transition-duration: 0.6s;
+        --hover-scale: 1.02;
+        --control-size: 36px;
+        --control-gap: 6px;
+    }
+    
+    body {
+        padding: 10px;
+        overflow-y: auto;
+    }
+    
+    main {
+        gap: 0.75rem;
+    }
+    
+    .container {
+        border-radius: 4px;
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+    }
+    
+    .cell {
+        min-width: 35px;
+        min-height: 35px;
+    }
+    
+    .controls {
+        padding: 8px;
+        border-radius: 8px;
+    }
+    
+    .controls button {
+        font-size: 14px;
+    }
+    
+    .help-content {
+        padding: 1.5rem;
+        margin: 1rem;
+    }
+    
+    .help-content h2 {
+        font-size: 1.25rem;
+    }
+}
+
+@media (max-width: 480px) {
+    :root {
+        --container-size: 98vmin;
+        --grid-gap: 0.5px;
+        --control-size: 32px;
+    }
+    
+    .cell {
+        min-width: 30px;
+        min-height: 30px;
+    }
+    
+    .controls {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    
+    .progress-container {
+        order: -1;
+        flex-basis: 100%;
+        margin-bottom: 8px;
+    }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+    body {
+        overflow-y: auto;
+        padding: 5px;
+    }
+    
+    main {
+        flex-direction: row;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+    
+    .controls {
+        flex-direction: column;
+        width: auto;
+    }
+}
+
+/* ===== HIGH CONTRAST MODE ===== */
+@media (prefers-contrast: high) {
+    :root {
+        --cell-border: #fff;
+        --cell-border-hover: #fff;
+        --particle-white: #fff;
+        --control-border: #fff;
+        --control-text: #fff;
+    }
+    
+    .controls button {
+        border-width: 2px;
+    }
+}
+
+/* ===== REDUCED MOTION ===== */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+    
+    .container::before {
+        animation: none;
+    }
+    
+    .particle,
+    .smoke,
+    .glow {
+        animation: none !important;
+    }
+}
+
+/* ===== PRINT STYLES ===== */
+@media print {
+    body {
+        background: white;
+        color: black;
+        overflow: visible;
+    }
+    
+    .container {
+        box-shadow: none;
+        border: 2px solid black;
+    }
+    
+    .container::before {
+        display: none;
+    }
+    
+    .cell {
+        background: white;
+        border-color: black;
+    }
+    
+    .controls,
+    .help-panel,
+    .particles-container {
+        display: none;
+    }
+}
+
+/* ===== DARK MODE OVERRIDE ===== */
+@media (prefers-color-scheme: light) {
+    /* Keep dark theme regardless of system preference */
+    body {
+        background-color: var(--bg-dark);
+    }
+}
+
+/* ===== BROWSER COMPATIBILITY ===== */
+/* Webkit specific optimizations */
+@supports (-webkit-appearance: none) {
+    .cell {
+        -webkit-backface-visibility: visible;
+        -webkit-transform-style: preserve-3d;
+    }
+    
+    #grid {
+        -webkit-transform-style: preserve-3d;
+        -webkit-perspective: var(--flip-perspective);
+    }
+}
+
+/* Firefox specific optimizations */
+@-moz-document url-prefix() {
+    .cell {
+        will-change: auto; /* Firefox handles will-change differently */
+    }
+}
+
+/* Edge specific optimizations */
+@supports (-ms-accelerator: true) {
+    .cell {
+        -ms-transform-style: preserve-3d;
     }
 } 

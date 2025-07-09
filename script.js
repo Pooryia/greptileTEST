@@ -1,816 +1,1175 @@
-document.addEventListener('DOMContentLoaded', () => {
-    // Constants for grid and effects
-    const gridContainer = document.getElementById('grid');
-    const gridSize = 9;
-    const cells = [];
-    const particlesPerClick = 25;
-    const smokeParticlesPerClick = 8;
-    const glowEffectsPerClick = 3;
-    const sparkleParticlesPerClick = 15;
-    const rippleEffectsPerClick = 2;
-    
-    // Canvas setup for advanced particle effects
-    const canvas = document.getElementById('particleCanvas');
-    const ctx = canvas.getContext('2d');
-    
-    // Set canvas size to match container
-    function resizeCanvas() {
-        const container = document.querySelector('.container');
-        const rect = container.getBoundingClientRect();
-        canvas.width = rect.width;
-        canvas.height = rect.height;
-        
-        // Set device pixel ratio for crisp rendering
-        const dpr = window.devicePixelRatio || 1;
-        canvas.width = rect.width * dpr;
-        canvas.height = rect.height * dpr;
-        ctx.scale(dpr, dpr);
-        canvas.style.width = `${rect.width}px`;
-        canvas.style.height = `${rect.height}px`;
+/**
+ * Grid Animation Application
+ * A responsive interactive grid with particle effects and animations
+ * Enhanced with accessibility features and keyboard navigation
+ */
+
+class GridAnimationApp {
+    constructor() {
+        // Configuration constants
+        this.config = {
+            gridSize: 9,
+            particlesPerClick: 25,
+            smokeParticlesPerClick: 8,
+            glowEffectsPerClick: 3,
+            sparkleParticlesPerClick: 15,
+            rippleEffectsPerClick: 2,
+            maxParticles: 1000, // Limit for performance
+            animationDuration: 800,
+            debounceDelay: 16 // ~60fps
+        };
+
+        // State management
+        this.state = {
+            cells: [],
+            canvasParticles: [],
+            domParticles: new Set(),
+            animationLoopRunning: false,
+            isInitialized: false,
+            completionEffectActive: false,
+            currentFocusIndex: 0,
+            flippedCount: 0,
+            isMuted: false,
+            helpPanelOpen: false
+        };
+
+        // DOM element cache
+        this.elements = {
+            gridContainer: null,
+            canvas: null,
+            ctx: null,
+            particlesContainer: null,
+            container: null,
+            statusElement: null,
+            alertElement: null,
+            progressCurrent: null,
+            progressFill: null,
+            progressContainer: null,
+            helpButton: null,
+            resetButton: null,
+            muteButton: null,
+            helpPanel: null,
+            closeHelpButton: null
+        };
+
+        // Performance optimizations
+        this.rafId = null;
+        this.resizeTimeout = null;
+        this.particlePool = [];
+
+        // Keyboard navigation
+        this.keyboardNavigation = {
+            enabled: false,
+            currentRow: 0,
+            currentCol: 0
+        };
+
+        // Bind methods
+        this.handleCellClick = this.handleCellClick.bind(this);
+        this.handleKeyDown = this.handleKeyDown.bind(this);
+        this.handleResize = this.debounce(this.resizeCanvas.bind(this), this.config.debounceDelay);
+        this.animateCanvasParticles = this.animateCanvasParticles.bind(this);
+        this.handleHelpToggle = this.handleHelpToggle.bind(this);
+        this.handleReset = this.handleReset.bind(this);
+        this.handleMuteToggle = this.handleMuteToggle.bind(this);
+        this.handleGridFocus = this.handleGridFocus.bind(this);
+        this.handleGridBlur = this.handleGridBlur.bind(this);
     }
-    
-    // Call resize on load and window resize
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-    
-    // Canvas particle system
-    const canvasParticles = [];
-    
-    // Create a separate container for DOM particles to improve performance
-    const particlesContainer = document.createElement('div');
-    particlesContainer.classList.add('particles-container');
-    document.querySelector('.container').appendChild(particlesContainer);
-    
+
+    /**
+     * Initialize the application
+     */
+    init() {
+        try {
+            if (this.state.isInitialized) {
+                console.warn('GridAnimationApp already initialized');
+                return;
+            }
+
+            this.cacheElements();
+            this.setupCanvas();
+            this.initializeGrid();
+            this.setupEventListeners();
+            this.setupControls();
+            this.updateProgress();
+            this.state.isInitialized = true;
+            
+            // Announce initialization to screen readers
+            this.announceToScreenReader('Grid animation loaded. Use arrow keys to navigate and spacebar to flip cells.');
+            
+            console.log('GridAnimationApp initialized successfully');
+        } catch (error) {
+            console.error('Failed to initialize GridAnimationApp:', error);
+            this.showFallbackMessage();
+        }
+    }
+
+    /**
+     * Cache DOM elements for performance
+     */
+    cacheElements() {
+        this.elements.gridContainer = document.getElementById('grid');
+        this.elements.canvas = document.getElementById('particleCanvas');
+        this.elements.container = document.querySelector('.container');
+        this.elements.statusElement = document.getElementById('status');
+        this.elements.alertElement = document.getElementById('alert');
+        this.elements.progressCurrent = document.getElementById('progress-current');
+        this.elements.progressFill = document.querySelector('.progress-fill');
+        this.elements.progressContainer = document.querySelector('.progress-container');
+        this.elements.helpButton = document.getElementById('help-button');
+        this.elements.resetButton = document.getElementById('reset-button');
+        this.elements.muteButton = document.getElementById('mute-button');
+        this.elements.helpPanel = document.getElementById('help-panel');
+        this.elements.closeHelpButton = document.getElementById('close-help');
+
+        // Verify required elements exist
+        const requiredElements = ['gridContainer', 'canvas', 'container'];
+        for (const elementKey of requiredElements) {
+            if (!this.elements[elementKey]) {
+                throw new Error(`Required DOM element not found: ${elementKey}`);
+            }
+        }
+
+        this.elements.ctx = this.elements.canvas.getContext('2d');
+        if (!this.elements.ctx) {
+            throw new Error('Canvas context not available');
+        }
+
+        // Create particles container
+        this.elements.particlesContainer = document.createElement('div');
+        this.elements.particlesContainer.className = 'particles-container';
+        this.elements.container.appendChild(this.elements.particlesContainer);
+    }
+
+    /**
+     * Setup canvas with proper sizing and DPI handling
+     */
+    setupCanvas() {
+        this.resizeCanvas();
+    }
+
+    /**
+     * Resize canvas with debouncing and proper DPI handling
+     */
+    resizeCanvas() {
+        try {
+            const rect = this.elements.container.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            
+            // Set actual canvas size
+            this.elements.canvas.width = rect.width * dpr;
+            this.elements.canvas.height = rect.height * dpr;
+            
+            // Scale context for DPI
+            this.elements.ctx.scale(dpr, dpr);
+            
+            // Set display size
+            this.elements.canvas.style.width = `${rect.width}px`;
+            this.elements.canvas.style.height = `${rect.height}px`;
+        } catch (error) {
+            console.error('Canvas resize failed:', error);
+        }
+    }
+
+    /**
+     * Setup event listeners with proper cleanup
+     */
+    setupEventListeners() {
+        // Window events
+        window.addEventListener('resize', this.handleResize, { passive: true });
+        
+        // Grid keyboard navigation
+        this.elements.gridContainer.addEventListener('keydown', this.handleKeyDown);
+        this.elements.gridContainer.addEventListener('focus', this.handleGridFocus);
+        this.elements.gridContainer.addEventListener('blur', this.handleGridBlur);
+        
+        // Add visibility change listener for performance
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                this.pauseAnimations();
+            } else {
+                this.resumeAnimations();
+            }
+        });
+
+        // Add beforeunload for cleanup
+        window.addEventListener('beforeunload', () => {
+            this.cleanup();
+        });
+
+        // Touch events for mobile
+        this.elements.gridContainer.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+        }, { passive: false });
+    }
+
+    /**
+     * Setup control buttons
+     */
+    setupControls() {
+        // Help button
+        if (this.elements.helpButton) {
+            this.elements.helpButton.addEventListener('click', this.handleHelpToggle);
+        }
+
+        // Reset button
+        if (this.elements.resetButton) {
+            this.elements.resetButton.addEventListener('click', this.handleReset);
+        }
+
+        // Mute button
+        if (this.elements.muteButton) {
+            this.elements.muteButton.addEventListener('click', this.handleMuteToggle);
+        }
+
+        // Close help button
+        if (this.elements.closeHelpButton) {
+            this.elements.closeHelpButton.addEventListener('click', this.handleHelpToggle);
+        }
+
+        // Help panel escape key
+        if (this.elements.helpPanel) {
+            this.elements.helpPanel.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    this.handleHelpToggle();
+                }
+            });
+        }
+    }
+
+    /**
+     * Handle help panel toggle
+     */
+    handleHelpToggle() {
+        this.state.helpPanelOpen = !this.state.helpPanelOpen;
+        
+        if (this.elements.helpPanel) {
+            this.elements.helpPanel.classList.toggle('active', this.state.helpPanelOpen);
+            this.elements.helpPanel.setAttribute('aria-hidden', !this.state.helpPanelOpen);
+            
+            if (this.state.helpPanelOpen) {
+                // Focus the close button when opening
+                setTimeout(() => {
+                    if (this.elements.closeHelpButton) {
+                        this.elements.closeHelpButton.focus();
+                    }
+                }, 300);
+            } else {
+                // Return focus to help button when closing
+                if (this.elements.helpButton) {
+                    this.elements.helpButton.focus();
+                }
+            }
+        }
+    }
+
+    /**
+     * Handle reset button
+     */
+    handleReset() {
+        try {
+            // Reset all cells
+            this.state.cells.forEach(cell => {
+                cell.classList.remove('flipped');
+                cell.style.animation = '';
+                cell.dataset.animating = 'false';
+            });
+
+            // Reset state
+            this.state.flippedCount = 0;
+            this.state.completionEffectActive = false;
+
+            // Clear particles
+            this.clearAllParticles();
+
+            // Update progress
+            this.updateProgress();
+
+            // Update grid attributes
+            if (this.elements.gridContainer) {
+                this.elements.gridContainer.setAttribute('data-flipped-cells', '0');
+            }
+
+            // Announce reset
+            this.announceToScreenReader('Grid reset. All cells are now unflipped.');
+
+        } catch (error) {
+            console.error('Reset failed:', error);
+        }
+    }
+
+    /**
+     * Handle mute toggle
+     */
+    handleMuteToggle() {
+        this.state.isMuted = !this.state.isMuted;
+        
+        if (this.elements.muteButton) {
+            this.elements.muteButton.setAttribute('aria-pressed', this.state.isMuted);
+            const icon = this.elements.muteButton.querySelector('[aria-hidden="true"]');
+            const text = this.elements.muteButton.querySelector('.sr-only');
+            
+            if (icon && text) {
+                if (this.state.isMuted) {
+                    icon.textContent = '🔇';
+                    text.textContent = 'Sound off';
+                    this.elements.muteButton.setAttribute('aria-label', 'Unmute sound effects');
+                } else {
+                    icon.textContent = '🔊';
+                    text.textContent = 'Sound on';
+                    this.elements.muteButton.setAttribute('aria-label', 'Mute sound effects');
+                }
+            }
+        }
+    }
+
+    /**
+     * Handle grid focus for keyboard navigation
+     */
+    handleGridFocus() {
+        this.keyboardNavigation.enabled = true;
+        this.updateActiveCell();
+    }
+
+    /**
+     * Handle grid blur
+     */
+    handleGridBlur() {
+        this.keyboardNavigation.enabled = false;
+        // Remove active class from all cells
+        this.state.cells.forEach(cell => cell.classList.remove('active'));
+    }
+
+    /**
+     * Handle keyboard navigation
+     * @param {KeyboardEvent} event - The keyboard event
+     */
+    handleKeyDown(event) {
+        if (!this.keyboardNavigation.enabled) return;
+
+        const { key } = event;
+        let handled = false;
+
+        switch (key) {
+            case 'ArrowUp':
+                this.keyboardNavigation.currentRow = Math.max(0, this.keyboardNavigation.currentRow - 1);
+                handled = true;
+                break;
+            case 'ArrowDown':
+                this.keyboardNavigation.currentRow = Math.min(this.config.gridSize - 1, this.keyboardNavigation.currentRow + 1);
+                handled = true;
+                break;
+            case 'ArrowLeft':
+                this.keyboardNavigation.currentCol = Math.max(0, this.keyboardNavigation.currentCol - 1);
+                handled = true;
+                break;
+            case 'ArrowRight':
+                this.keyboardNavigation.currentCol = Math.min(this.config.gridSize - 1, this.keyboardNavigation.currentCol + 1);
+                handled = true;
+                break;
+            case ' ':
+            case 'Enter':
+                const activeCell = this.getCurrentCell();
+                if (activeCell) {
+                    this.handleCellClick({ target: activeCell, preventDefault: () => {} });
+                }
+                handled = true;
+                break;
+            case 'Home':
+                this.keyboardNavigation.currentRow = 0;
+                this.keyboardNavigation.currentCol = 0;
+                handled = true;
+                break;
+            case 'End':
+                this.keyboardNavigation.currentRow = this.config.gridSize - 1;
+                this.keyboardNavigation.currentCol = this.config.gridSize - 1;
+                handled = true;
+                break;
+        }
+
+        if (handled) {
+            event.preventDefault();
+            this.updateActiveCell();
+        }
+    }
+
+    /**
+     * Get current cell based on keyboard navigation
+     * @returns {HTMLElement|null} Current cell element
+     */
+    getCurrentCell() {
+        const index = this.keyboardNavigation.currentRow * this.config.gridSize + this.keyboardNavigation.currentCol;
+        return this.state.cells[index] || null;
+    }
+
+    /**
+     * Update active cell for keyboard navigation
+     */
+    updateActiveCell() {
+        // Remove active class from all cells
+        this.state.cells.forEach(cell => cell.classList.remove('active'));
+        
+        // Add active class to current cell
+        const currentCell = this.getCurrentCell();
+        if (currentCell) {
+            currentCell.classList.add('active');
+            
+            // Announce current position to screen readers
+            const row = this.keyboardNavigation.currentRow + 1;
+            const col = this.keyboardNavigation.currentCol + 1;
+            const isFlipped = currentCell.classList.contains('flipped') ? 'flipped' : 'unflipped';
+            this.announceToScreenReader(`Cell ${row}, ${col}, ${isFlipped}`);
+        }
+    }
+
     /**
      * Initialize the grid and create all cells
      */
-    function initializeGrid() {
-        // Generate grid cells
-        for (let i = 0; i < gridSize * gridSize; i++) {
-            const cell = document.createElement('div');
-            cell.classList.add('cell');
-            
-            // Calculate row and column for position-based effects
-            const row = Math.floor(i / gridSize);
-            const col = i % gridSize;
-            
-            // Add custom properties for position-aware animations
-            cell.style.setProperty('--row', row);
-            cell.style.setProperty('--col', col);
-            
-            // Set background position to create a unified gradient effect
-            // Each cell shows only a portion of the full gradient
-            const bgPosX = (col / (gridSize - 1)) * 100;
-            const bgPosY = (row / (gridSize - 1)) * 100;
-            
-            // Set the background position for each cell to create a unified gradient
-            cell.style.setProperty('--bg-pos-x', `${bgPosX}%`);
-            cell.style.setProperty('--bg-pos-y', `${bgPosY}%`);
-            
-            // Calculate the background size to make the gradient span the entire grid
-            cell.style.setProperty('--bg-size-x', `${gridSize * 100}%`);
-            cell.style.setProperty('--bg-size-y', `${gridSize * 100}%`);
-            
-            // Set the cell's before element to show the proper part of the gradient
-            cell.style.setProperty('background-position', `${bgPosX}% ${bgPosY}%`);
-            cell.style.setProperty('background-size', `${gridSize * 100}% ${gridSize * 100}%`);
-            
-            // Add initial animation delay based on position for diagonal wave effect
-            const initialDelay = (row + col) * 50;
-            cell.style.animationDelay = `${initialDelay}ms`;
-            
-            // Create a unique cell ID for tracking
-            const cellId = `cell-${row}-${col}`;
-            cell.id = cellId;
-            
-            // Add click event listener
-            cell.addEventListener('click', (event) => handleCellClick(event, cell, row, col));
-            
-            cells.push(cell);
-            gridContainer.appendChild(cell);
+    initializeGrid() {
+        const fragment = document.createDocumentFragment();
+        this.state.cells = [];
+
+        for (let i = 0; i < this.config.gridSize * this.config.gridSize; i++) {
+            const cell = this.createCell(i);
+            this.state.cells.push(cell);
+            fragment.appendChild(cell);
         }
+
+        this.elements.gridContainer.appendChild(fragment);
     }
-    
+
     /**
-     * Handles the click event on a cell
+     * Create a single grid cell
+     * @param {number} index - Cell index
+     * @returns {HTMLElement} The created cell element
+     */
+    createCell(index) {
+        const cell = document.createElement('div');
+        const row = Math.floor(index / this.config.gridSize);
+        const col = index % this.config.gridSize;
+
+        cell.className = 'cell';
+        cell.id = `cell-${row}-${col}`;
+        cell.dataset.row = row;
+        cell.dataset.col = col;
+        cell.dataset.animating = 'false';
+        cell.setAttribute('role', 'gridcell');
+        cell.setAttribute('aria-label', `Cell ${row + 1}, ${col + 1}, unflipped`);
+        cell.setAttribute('tabindex', '-1');
+
+        // Set CSS custom properties for animations
+        this.setCellProperties(cell, row, col);
+
+        // Add event listeners with passive option where possible
+        cell.addEventListener('click', this.handleCellClick, { passive: false });
+        
+        // Add touch support
+        cell.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            this.handleCellClick(e);
+        }, { passive: false });
+
+        return cell;
+    }
+
+    /**
+     * Set CSS custom properties for cell
+     * @param {HTMLElement} cell - The cell element
+     * @param {number} row - Row index
+     * @param {number} col - Column index
+     */
+    setCellProperties(cell, row, col) {
+        const bgPosX = (col / (this.config.gridSize - 1)) * 100;
+        const bgPosY = (row / (this.config.gridSize - 1)) * 100;
+        const initialDelay = (row + col) * 50;
+
+        cell.style.setProperty('--row', row);
+        cell.style.setProperty('--col', col);
+        cell.style.setProperty('--bg-pos-x', `${bgPosX}%`);
+        cell.style.setProperty('--bg-pos-y', `${bgPosY}%`);
+        cell.style.setProperty('--bg-size-x', `${this.config.gridSize * 100}%`);
+        cell.style.setProperty('--bg-size-y', `${this.config.gridSize * 100}%`);
+        cell.style.backgroundPosition = `${bgPosX}% ${bgPosY}%`;
+        cell.style.backgroundSize = `${this.config.gridSize * 100}% ${this.config.gridSize * 100}%`;
+        cell.style.animationDelay = `${initialDelay}ms`;
+    }
+
+    /**
+     * Handle cell click with improved error handling and performance
      * @param {Event} event - The click event
-     * @param {HTMLElement} cell - The cell element that was clicked
-     * @param {number} row - The row index of the cell
-     * @param {number} col - The column index of the cell
      */
-    function handleCellClick(event, cell, row, col) {
-        // Prevent default to avoid any browser-specific issues
-        event.preventDefault();
-        
-        // Get accurate cell position for particle effects
-        const rect = cell.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-        
-        // Check if the cell is currently being animated
-        if (cell.dataset.animating === 'true') {
-            return; // Skip if animation is in progress
+    handleCellClick(event) {
+        try {
+            event.preventDefault();
+            
+            const cell = event.currentTarget || event.target.closest('.cell');
+            if (!cell || cell.dataset.animating === 'true') {
+                return;
+            }
+
+            const row = parseInt(cell.dataset.row, 10);
+            const col = parseInt(cell.dataset.col, 10);
+            const rect = cell.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+
+            this.animateCell(cell, centerX, centerY, row, col);
+            
+            // Update keyboard navigation position when clicking
+            this.keyboardNavigation.currentRow = row;
+            this.keyboardNavigation.currentCol = col;
+            
+        } catch (error) {
+            console.error('Cell click handler failed:', error);
         }
-        
-        // Set animating flag
+    }
+
+    /**
+     * Animate a cell with proper state management
+     * @param {HTMLElement} cell - The cell to animate
+     * @param {number} centerX - X coordinate of cell center
+     * @param {number} centerY - Y coordinate of cell center
+     * @param {number} row - Row index
+     * @param {number} col - Column index
+     */
+    animateCell(cell, centerX, centerY, row, col) {
         cell.dataset.animating = 'true';
-        
+
         if (cell.classList.contains('flipped')) {
-            // If already flipped, flip back to original state
-            cell.style.animation = 'rotate-scale 0.8s reverse forwards';
-            
-            // Remove flipped class after animation completes
-            setTimeout(() => {
-                cell.classList.remove('flipped');
-                cell.dataset.animating = 'false'; // Clear animating flag
-            }, 800);
+            this.flipCellBack(cell);
         } else {
-            // Apply random rotation style
-            const rotationStyle = getRandomRotationStyle();
-            cell.style.animation = rotationStyle.animation;
+            this.flipCellForward(cell, centerX, centerY, row, col);
+        }
+    }
+
+    /**
+     * Flip cell back to original state
+     * @param {HTMLElement} cell - The cell to flip back
+     */
+    flipCellBack(cell) {
+        cell.style.animation = 'rotate-scale 0.8s reverse forwards';
+        
+        setTimeout(() => {
+            cell.classList.remove('flipped');
+            cell.dataset.animating = 'false';
+            cell.style.animation = '';
             
-            // Create DOM-based particle effects at the click position
-            createParticleEffects(centerX, centerY, row, col);
+            // Update state and progress
+            this.state.flippedCount--;
+            this.updateProgress();
             
-            // Create canvas-based particle effects at the click position
-            createCanvasParticles(centerX, centerY, row, col);
+            // Update accessibility
+            const row = parseInt(cell.dataset.row, 10) + 1;
+            const col = parseInt(cell.dataset.col, 10) + 1;
+            cell.setAttribute('aria-label', `Cell ${row}, ${col}, unflipped`);
             
-            // Add flipped class after a small delay to ensure animation starts
+        }, this.config.animationDuration);
+    }
+
+    /**
+     * Flip cell forward and create effects
+     * @param {HTMLElement} cell - The cell to flip
+     * @param {number} centerX - X coordinate of cell center
+     * @param {number} centerY - Y coordinate of cell center
+     * @param {number} row - Row index
+     * @param {number} col - Column index
+     */
+    flipCellForward(cell, centerX, centerY, row, col) {
+        const rotationStyle = this.getRandomRotationStyle();
+        cell.style.animation = rotationStyle.animation;
+
+        // Create particle effects
+        this.createParticleEffects(centerX, centerY, row, col);
+        this.createCanvasParticles(centerX, centerY, row, col);
+
+        setTimeout(() => {
+            cell.classList.add('flipped');
+            
+            // Update state and progress
+            this.state.flippedCount++;
+            this.updateProgress();
+            
+            // Update accessibility
+            const rowLabel = row + 1;
+            const colLabel = col + 1;
+            cell.setAttribute('aria-label', `Cell ${rowLabel}, ${colLabel}, flipped`);
+            
+            this.checkAllFlipped();
+            
             setTimeout(() => {
-                cell.classList.add('flipped');
-                
-                // Check if all cells are flipped
-                checkAllFlipped();
-                
-                // Clear animating flag after animation completes
-                setTimeout(() => {
-                    cell.dataset.animating = 'false';
-                }, 750);
-            }, 50);
+                cell.dataset.animating = 'false';
+            }, 750);
+        }, 50);
+    }
+
+    /**
+     * Update progress indicator
+     */
+    updateProgress() {
+        const percentage = (this.state.flippedCount / (this.config.gridSize * this.config.gridSize)) * 100;
+        
+        if (this.elements.progressCurrent) {
+            this.elements.progressCurrent.textContent = this.state.flippedCount;
+        }
+        
+        if (this.elements.progressFill) {
+            this.elements.progressFill.style.width = `${percentage}%`;
+        }
+        
+        if (this.elements.progressContainer) {
+            this.elements.progressContainer.setAttribute('aria-valuenow', this.state.flippedCount);
+        }
+        
+        if (this.elements.gridContainer) {
+            this.elements.gridContainer.setAttribute('data-flipped-cells', this.state.flippedCount);
         }
     }
-    
+
     /**
-     * Creates canvas-based particles at the specified position
-     * @param {number} x - The x-coordinate of the effect center
-     * @param {number} y - The y-coordinate of the effect center
-     * @param {number} row - The row index of the cell
-     * @param {number} col - The column index of the cell
+     * Create canvas-based particles with object pooling
+     * @param {number} x - X coordinate
+     * @param {number} y - Y coordinate
+     * @param {number} row - Row index
+     * @param {number} col - Column index
      */
-    function createCanvasParticles(x, y, row, col) {
-        const hueBase = 240 + ((row + col) / (gridSize * 2 - 2)) * 60; // Blue to purple range
-        
-        // Convert page coordinates to canvas coordinates
-        const container = document.querySelector('.container');
-        const containerRect = container.getBoundingClientRect();
-        const canvasX = x - containerRect.left;
-        const canvasY = y - containerRect.top;
-        
-        // Create fluid particles
-        for (let i = 0; i < 30; i++) {
-            const size = Math.random() * 5 + 2;
-            const speedX = (Math.random() - 0.5) * 3;
-            const speedY = (Math.random() - 0.5) * 3;
-            const life = Math.random() * 100 + 50;
-            
-            // Color variation based on position
-            const hue = hueBase + Math.random() * 30 - 15;
-            const saturation = Math.floor(Math.random() * 30) + 70; // 70-100%
-            const lightness = Math.floor(Math.random() * 20) + 50; // 50-70%
-            const alpha = Math.random() * 0.5 + 0.5;
-            
-            canvasParticles.push({
-                x: canvasX,
-                y: canvasY,
-                size,
-                speedX,
-                speedY,
-                life,
-                fullLife: life,
-                color: `hsla(${hue}, ${saturation}%, ${lightness}%, ${alpha})`,
-                glow: Math.random() > 0.7 // 30% chance of glowing particles
-            });
-        }
-        
-        // Start animation loop if not already running
-        if (!animationLoopRunning) {
-            animationLoopRunning = true;
-            animateCanvasParticles();
-        }
-    }
-    
-    // Animation loop flag
-    let animationLoopRunning = false;
-    
-    /**
-     * Animates all canvas particles
-     */
-    function animateCanvasParticles() {
-        // Clear canvas
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        // Update and draw particles
-        for (let i = canvasParticles.length - 1; i >= 0; i--) {
-            const p = canvasParticles[i];
-            
-            // Update position
-            p.x += p.speedX;
-            p.y += p.speedY;
-            
-            // Apply gravity and friction
-            p.speedY += 0.03;
-            p.speedX *= 0.99;
-            p.speedY *= 0.99;
-            
-            // Decrease life
-            p.life--;
-            
-            // Calculate opacity based on remaining life
-            const opacity = p.life / p.fullLife;
-            
-            // Draw particle
-            ctx.globalAlpha = opacity;
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-            ctx.fillStyle = p.color;
-            ctx.fill();
-            
-            // Add glow effect for special particles
-            if (p.glow) {
-                ctx.save();
-                ctx.filter = `blur(${p.size * 2}px)`;
-                ctx.globalAlpha = opacity * 0.5;
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.size * 2, 0, Math.PI * 2);
-                ctx.fillStyle = p.color;
-                ctx.fill();
-                ctx.restore();
+    createCanvasParticles(x, y, row, col) {
+        try {
+            // Limit particles for performance
+            if (this.state.canvasParticles.length > this.config.maxParticles) {
+                this.state.canvasParticles.splice(0, this.config.maxParticles / 2);
             }
-            
-            // Remove dead particles
-            if (p.life <= 0) {
-                canvasParticles.splice(i, 1);
+
+            const hueBase = 240 + ((row + col) / (this.config.gridSize * 2 - 2)) * 60;
+            const containerRect = this.elements.container.getBoundingClientRect();
+            const canvasX = x - containerRect.left;
+            const canvasY = y - containerRect.top;
+
+            for (let i = 0; i < 30; i++) {
+                const particle = this.getParticleFromPool() || this.createParticle();
+                
+                Object.assign(particle, {
+                    x: canvasX,
+                    y: canvasY,
+                    size: Math.random() * 5 + 2,
+                    speedX: (Math.random() - 0.5) * 3,
+                    speedY: (Math.random() - 0.5) * 3,
+                    life: Math.random() * 100 + 50,
+                    color: this.getParticleColor(hueBase),
+                    glow: Math.random() > 0.7,
+                    active: true
+                });
+
+                particle.fullLife = particle.life;
+                this.state.canvasParticles.push(particle);
             }
-        }
-        
-        // Continue animation if particles exist
-        if (canvasParticles.length > 0) {
-            requestAnimationFrame(animateCanvasParticles);
-        } else {
-            animationLoopRunning = false;
+
+            this.startAnimationLoop();
+        } catch (error) {
+            console.error('Canvas particle creation failed:', error);
         }
     }
-    
+
     /**
-     * Creates various particle effects at the specified position
-     * @param {number} x - The x-coordinate of the effect center
-     * @param {number} y - The y-coordinate of the effect center
-     * @param {number} row - The row index of the cell
-     * @param {number} col - The column index of the cell
+     * Get particle from pool or create new one
+     * @returns {Object} Particle object
      */
-    function createParticleEffects(x, y, row, col) {
-        // Calculate color based on position in the grid to match the gradient
-        const hueBase = 240 + ((row + col) / (gridSize * 2 - 2)) * 60; // Blue to purple range
-        
-        // Create regular particles
-        createParticles(x, y, particlesPerClick, hueBase);
-        
-        // Create smoke particles
-        createSmokeParticles(x, y, smokeParticlesPerClick, hueBase);
-        
-        // Create glow effects
-        createGlowEffects(x, y, glowEffectsPerClick, hueBase);
-        
-        // Create sparkle particles
-        createSparkleParticles(x, y, sparkleParticlesPerClick, hueBase);
-        
-        // Create ripple effects
-        createRippleEffects(x, y, rippleEffectsPerClick, hueBase);
+    getParticleFromPool() {
+        return this.particlePool.pop();
     }
-    
+
     /**
-     * Creates regular particles
-     * @param {number} x - The x-coordinate of the effect center
-     * @param {number} y - The y-coordinate of the effect center
-     * @param {number} count - The number of particles to create
-     * @param {number} hueBase - The base hue value for the particles
+     * Create new particle object
+     * @returns {Object} Particle object
      */
-    function createParticles(x, y, count, hueBase) {
-        // Get the container's position to calculate relative coordinates
-        const container = document.querySelector('.container');
-        const containerRect = container.getBoundingClientRect();
+    createParticle() {
+        return {
+            x: 0, y: 0, size: 0, speedX: 0, speedY: 0,
+            life: 0, fullLife: 0, color: '', glow: false, active: false
+        };
+    }
+
+    /**
+     * Return particle to pool
+     * @param {Object} particle - Particle to return to pool
+     */
+    returnParticleToPool(particle) {
+        particle.active = false;
+        if (this.particlePool.length < 100) {
+            this.particlePool.push(particle);
+        }
+    }
+
+    /**
+     * Get particle color based on hue
+     * @param {number} hueBase - Base hue value
+     * @returns {string} HSL color string
+     */
+    getParticleColor(hueBase) {
+        const hue = hueBase + Math.random() * 30 - 15;
+        const saturation = Math.floor(Math.random() * 30) + 70;
+        const lightness = Math.floor(Math.random() * 20) + 50;
+        const alpha = Math.random() * 0.5 + 0.5;
+        return `hsla(${hue}, ${saturation}%, ${lightness}%, ${alpha})`;
+    }
+
+    /**
+     * Start animation loop if not already running
+     */
+    startAnimationLoop() {
+        if (!this.state.animationLoopRunning) {
+            this.state.animationLoopRunning = true;
+            this.animateCanvasParticles();
+        }
+    }
+
+    /**
+     * Animate canvas particles with improved performance
+     */
+    animateCanvasParticles() {
+        try {
+            if (!this.state.animationLoopRunning || !this.elements.ctx) {
+                return;
+            }
+
+            // Clear canvas
+            this.elements.ctx.clearRect(0, 0, this.elements.canvas.width, this.elements.canvas.height);
+
+            // Update and draw particles
+            for (let i = this.state.canvasParticles.length - 1; i >= 0; i--) {
+                const particle = this.state.canvasParticles[i];
+                
+                if (!particle.active || particle.life <= 0) {
+                    this.returnParticleToPool(particle);
+                    this.state.canvasParticles.splice(i, 1);
+                    continue;
+                }
+
+                this.updateParticle(particle);
+                this.drawParticle(particle);
+            }
+
+            // Continue animation if particles exist
+            if (this.state.canvasParticles.length > 0) {
+                this.rafId = requestAnimationFrame(this.animateCanvasParticles);
+            } else {
+                this.state.animationLoopRunning = false;
+            }
+        } catch (error) {
+            console.error('Canvas animation failed:', error);
+            this.state.animationLoopRunning = false;
+        }
+    }
+
+    /**
+     * Update particle properties
+     * @param {Object} particle - Particle to update
+     */
+    updateParticle(particle) {
+        particle.x += particle.speedX;
+        particle.y += particle.speedY;
+        particle.life -= 1;
+        particle.speedY += 0.1; // Gravity
+        particle.speedX *= 0.99; // Air resistance
+    }
+
+    /**
+     * Draw particle on canvas
+     * @param {Object} particle - Particle to draw
+     */
+    drawParticle(particle) {
+        const alpha = particle.life / particle.fullLife;
+        this.elements.ctx.globalAlpha = alpha;
+        this.elements.ctx.fillStyle = particle.color;
         
-        // Calculate position relative to the particles container
-        const relativeX = x - containerRect.left;
-        const relativeY = y - containerRect.top;
+        this.elements.ctx.beginPath();
+        this.elements.ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+        this.elements.ctx.fill();
         
+        if (particle.glow) {
+            this.elements.ctx.shadowBlur = 10;
+            this.elements.ctx.shadowColor = particle.color;
+            this.elements.ctx.fill();
+            this.elements.ctx.shadowBlur = 0;
+        }
+    }
+
+    /**
+     * Create DOM-based particle effects with cleanup
+     * @param {number} x - X coordinate
+     * @param {number} y - Y coordinate
+     * @param {number} row - Row index
+     * @param {number} col - Column index
+     */
+    createParticleEffects(x, y, row, col) {
+        try {
+            const hueBase = 240 + ((row + col) / (this.config.gridSize * 2 - 2)) * 60;
+            const containerRect = this.elements.container.getBoundingClientRect();
+            
+            // Limit DOM particles for performance
+            if (this.state.domParticles.size > 200) {
+                this.cleanupOldParticles();
+            }
+
+            this.createDOMParticles(x - containerRect.left, y - containerRect.top, this.config.particlesPerClick, hueBase);
+            this.createSmokeParticles(x - containerRect.left, y - containerRect.top, this.config.smokeParticlesPerClick, hueBase);
+            this.createGlowEffects(x - containerRect.left, y - containerRect.top, this.config.glowEffectsPerClick, hueBase);
+        } catch (error) {
+            console.error('DOM particle creation failed:', error);
+        }
+    }
+
+    /**
+     * Create DOM particles with proper cleanup
+     * @param {number} x - X coordinate
+     * @param {number} y - Y coordinate
+     * @param {number} count - Number of particles
+     * @param {number} hueBase - Base hue value
+     */
+    createDOMParticles(x, y, count, hueBase) {
         for (let i = 0; i < count; i++) {
             const particle = document.createElement('div');
-            particle.classList.add('particle');
+            particle.className = 'particle';
             
-            // Random size between 2px and 6px
-            const size = Math.random() * 4 + 2;
-            particle.style.width = `${size}px`;
-            particle.style.height = `${size}px`;
+            const size = Math.random() * 8 + 4;
+            const angle = (Math.PI * 2 * i) / count + Math.random() * 0.5;
+            const distance = Math.random() * 150 + 50;
+            const duration = Math.random() * 1000 + 1500;
             
-            // Position at the center of the clicked cell using relative coordinates
-            particle.style.left = `${relativeX}px`;
-            particle.style.top = `${relativeY}px`;
-            
-            // Random direction
-            const angle = Math.random() * Math.PI * 2;
-            const distance = Math.random() * 100 + 50;
             const tx = Math.cos(angle) * distance;
             const ty = Math.sin(angle) * distance;
             
-            // Set custom properties for the animation
-            particle.style.setProperty('--tx', `${tx}px`);
-            particle.style.setProperty('--ty', `${ty}px`);
+            particle.style.cssText = `
+                left: ${x}px;
+                top: ${y}px;
+                width: ${size}px;
+                height: ${size}px;
+                --tx: ${tx}px;
+                --ty: ${ty}px;
+                animation: particle-fade ${duration}ms ease-out forwards;
+                background-color: ${this.getParticleColor(hueBase)};
+            `;
             
-            // Random color variation based on position
-            const hue = hueBase + Math.random() * 30 - 15;
-            const saturation = Math.floor(Math.random() * 30) + 70; // 70-100%
-            const lightness = Math.floor(Math.random() * 20) + 50; // 50-70%
-            particle.style.backgroundColor = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-            particle.style.boxShadow = `0 0 ${size * 2}px ${size}px hsla(${hue}, ${saturation}%, ${lightness}%, 0.7)`;
+            this.elements.particlesContainer.appendChild(particle);
+            this.state.domParticles.add(particle);
             
-            // Animation duration between 0.5s and 1.5s
-            const duration = Math.random() + 0.5;
-            particle.style.animation = `particle-fade ${duration}s ease-out forwards`;
-            
-            // Add to container and remove after animation
-            particlesContainer.appendChild(particle);
+            // Auto cleanup
             setTimeout(() => {
-                particlesContainer.removeChild(particle);
-            }, duration * 1000);
+                this.removeParticle(particle);
+            }, duration);
         }
     }
-    
+
     /**
-     * Creates smoke particles
-     * @param {number} x - The x-coordinate of the effect center
-     * @param {number} y - The y-coordinate of the effect center
-     * @param {number} count - The number of smoke particles to create
-     * @param {number} hueBase - The base hue value for the smoke particles
+     * Create smoke particles
+     * @param {number} x - X coordinate
+     * @param {number} y - Y coordinate
+     * @param {number} count - Number of particles
+     * @param {number} hueBase - Base hue value
      */
-    function createSmokeParticles(x, y, count, hueBase) {
-        // Get the container's position to calculate relative coordinates
-        const container = document.querySelector('.container');
-        const containerRect = container.getBoundingClientRect();
-        
-        // Calculate position relative to the particles container
-        const relativeX = x - containerRect.left;
-        const relativeY = y - containerRect.top;
-        
+    createSmokeParticles(x, y, count, hueBase) {
         for (let i = 0; i < count; i++) {
             const smoke = document.createElement('div');
-            smoke.classList.add('smoke');
+            smoke.className = 'smoke';
             
-            // Random size between 20px and 40px
-            const size = Math.random() * 20 + 20;
-            smoke.style.width = `${size}px`;
-            smoke.style.height = `${size}px`;
+            const size = Math.random() * 30 + 20;
+            const tx = (Math.random() - 0.5) * 100;
+            const ty = -(Math.random() * 200 + 100);
+            const duration = Math.random() * 2000 + 2000;
             
-            // Position at the center of the clicked cell using relative coordinates
-            smoke.style.left = `${relativeX - size / 2}px`;
-            smoke.style.top = `${relativeY - size / 2}px`;
-            
-            // Random direction with more upward bias
-            const angle = Math.random() * Math.PI - Math.PI / 2; // -90° to 90°
-            const distance = Math.random() * 100 + 50;
-            const tx = Math.cos(angle) * distance;
-            const ty = Math.sin(angle) * distance - 50; // Upward bias
-            
-            // Set custom properties for the animation
-            smoke.style.setProperty('--tx', `${tx}px`);
-            smoke.style.setProperty('--ty', `${ty}px`);
-            
-            // Color variation based on position
-            const hue = hueBase + Math.random() * 20 - 10;
-            smoke.style.background = `
-                radial-gradient(
-                    circle at center, 
-                    rgba(255, 255, 255, 0.8) 0%, 
-                    hsla(${hue}, 70%, 50%, 0.5) 30%, 
-                    hsla(${hue}, 70%, 30%, 0.2) 70%, 
-                    transparent 100%
-                )
+            smoke.style.cssText = `
+                left: ${x}px;
+                top: ${y}px;
+                width: ${size}px;
+                height: ${size}px;
+                --tx: ${tx}px;
+                --ty: ${ty}px;
+                animation: smoke-rise ${duration}ms ease-out forwards;
             `;
             
-            // Animation duration between 1s and 2s
-            const duration = Math.random() + 1;
-            smoke.style.animation = `smoke-rise ${duration}s ease-out forwards`;
+            this.elements.particlesContainer.appendChild(smoke);
+            this.state.domParticles.add(smoke);
             
-            // Add to container and remove after animation
-            particlesContainer.appendChild(smoke);
             setTimeout(() => {
-                particlesContainer.removeChild(smoke);
-            }, duration * 1000);
+                this.removeParticle(smoke);
+            }, duration);
         }
     }
-    
+
     /**
-     * Creates glow effects
-     * @param {number} x - The x-coordinate of the effect center
-     * @param {number} y - The y-coordinate of the effect center
-     * @param {number} count - The number of glow effects to create
-     * @param {number} hueBase - The base hue value for the glow effects
+     * Create glow effects
+     * @param {number} x - X coordinate
+     * @param {number} y - Y coordinate
+     * @param {number} count - Number of effects
+     * @param {number} hueBase - Base hue value
      */
-    function createGlowEffects(x, y, count, hueBase) {
-        // Get the container's position to calculate relative coordinates
-        const container = document.querySelector('.container');
-        const containerRect = container.getBoundingClientRect();
-        
-        // Calculate position relative to the particles container
-        const relativeX = x - containerRect.left;
-        const relativeY = y - containerRect.top;
-        
+    createGlowEffects(x, y, count, hueBase) {
         for (let i = 0; i < count; i++) {
             const glow = document.createElement('div');
-            glow.classList.add('glow');
+            glow.className = 'glow';
             
-            // Random size between 10px and 30px
-            const size = Math.random() * 20 + 10;
-            glow.style.width = `${size}px`;
-            glow.style.height = `${size}px`;
+            const size = Math.random() * 60 + 40;
+            const duration = Math.random() * 1000 + 1000;
             
-            // Position at the center of the clicked cell using relative coordinates
-            glow.style.left = `${relativeX - size / 2}px`;
-            glow.style.top = `${relativeY - size / 2}px`;
-            
-            // Color variation based on position
-            const hue = hueBase + Math.random() * 20 - 10;
-            glow.style.boxShadow = `0 0 ${size * 2}px ${size}px hsla(${hue}, 80%, 60%, 0.7)`;
-            
-            // Animation duration between 0.7s and 1.2s
-            const duration = Math.random() * 0.5 + 0.7;
-            glow.style.animation = `glow-pulse ${duration}s ease-out forwards`;
-            
-            // Add to container and remove after animation
-            particlesContainer.appendChild(glow);
-            setTimeout(() => {
-                particlesContainer.removeChild(glow);
-            }, duration * 1000);
-        }
-    }
-    
-    /**
-     * Creates sparkle particles
-     * @param {number} x - The x-coordinate of the effect center
-     * @param {number} y - The y-coordinate of the effect center
-     * @param {number} count - The number of sparkle particles to create
-     * @param {number} hueBase - The base hue value for the sparkle particles
-     */
-    function createSparkleParticles(x, y, count, hueBase) {
-        // Get the container's position to calculate relative coordinates
-        const container = document.querySelector('.container');
-        const containerRect = container.getBoundingClientRect();
-        
-        // Calculate position relative to the particles container
-        const relativeX = x - containerRect.left;
-        const relativeY = y - containerRect.top;
-        
-        for (let i = 0; i < count; i++) {
-            const sparkle = document.createElement('div');
-            sparkle.classList.add('particle');
-            
-            // Very small size for sparkles
-            const size = Math.random() * 2 + 1;
-            sparkle.style.width = `${size}px`;
-            sparkle.style.height = `${size}px`;
-            
-            // Random position around the clicked point
-            const radius = Math.random() * 50;
-            const angle = Math.random() * Math.PI * 2;
-            const sparkleX = relativeX + Math.cos(angle) * radius;
-            const sparkleY = relativeY + Math.sin(angle) * radius;
-            
-            sparkle.style.left = `${sparkleX}px`;
-            sparkle.style.top = `${sparkleY}px`;
-            
-            // Bright color
-            const hue = hueBase + Math.random() * 30 - 15;
-            sparkle.style.backgroundColor = `hsl(${hue}, 100%, 80%)`;
-            sparkle.style.boxShadow = `0 0 ${size * 3}px ${size * 2}px hsla(${hue}, 100%, 70%, 0.9)`;
-            
-            // Animation duration between 0.3s and 0.8s
-            const duration = Math.random() * 0.5 + 0.3;
-            sparkle.style.animation = `sparkle ${duration}s ease-in-out infinite`;
-            
-            // Add to container and remove after some time
-            particlesContainer.appendChild(sparkle);
-            setTimeout(() => {
-                particlesContainer.removeChild(sparkle);
-            }, Math.random() * 1000 + 500);
-        }
-    }
-    
-    /**
-     * Creates ripple effects
-     * @param {number} x - The x-coordinate of the effect center
-     * @param {number} y - The y-coordinate of the effect center
-     * @param {number} count - The number of ripple effects to create
-     * @param {number} hueBase - The base hue value for the ripple effects
-     */
-    function createRippleEffects(x, y, count, hueBase) {
-        // Get the container's position to calculate relative coordinates
-        const container = document.querySelector('.container');
-        const containerRect = container.getBoundingClientRect();
-        
-        // Calculate position relative to the particles container
-        const relativeX = x - containerRect.left;
-        const relativeY = y - containerRect.top;
-        
-        for (let i = 0; i < count; i++) {
-            const ripple = document.createElement('div');
-            ripple.style.position = 'absolute';
-            ripple.style.left = `${relativeX}px`;
-            ripple.style.top = `${relativeY}px`;
-            ripple.style.width = '10px';
-            ripple.style.height = '10px';
-            ripple.style.borderRadius = '50%';
-            
-            // Color based on position
-            const hue = hueBase + Math.random() * 20 - 10;
-            ripple.style.border = `5px solid hsla(${hue}, 80%, 60%, 0.7)`;
-            
-            // Animation
-            const duration = Math.random() * 0.5 + 0.8;
-            ripple.style.animation = `ripple ${duration}s ease-out forwards`;
-            
-            // Add to container and remove after animation
-            particlesContainer.appendChild(ripple);
-            setTimeout(() => {
-                particlesContainer.removeChild(ripple);
-            }, duration * 1000);
-        }
-    }
-    
-    /**
-     * Returns a randomly selected animation style object for cell rotation or flipping.
-     * The returned object contains an `animation` property with a CSS animation string chosen from a set of predefined rotation, flip, spin, and pulse effects.
-     * @return {{animation: string}} An object specifying the animation style to apply.
-     */
-    function getRandomRotationStyle() {
-        const animations = [
-            { animation: 'rotate-scale 0.8s forwards' },
-            { animation: 'rotate-scale 1s reverse forwards' },
-            { animation: 'rotate-scale 1.2s alternate forwards' },
-            { animation: 'flip-in 0.7s forwards' },
-            { animation: 'spin-out 1s forwards, flip-in 0.5s 1s forwards' },
-            { animation: 'pulse 0.5s 2 forwards, rotate-scale 1s 1s forwards' }
-        ];
-        
-        const randomIndex = Math.floor(Math.random() * animations.length);
-        return animations[randomIndex];
-    }
-    
-    /**
-     * Generates a random semi-transparent HSLA color within the blue to purple hue range.
-     * @param {number} row - The row index of the cell
-     * @param {number} col - The column index of the cell
-     * @return {string} An HSLA color string with hue between 240–300, saturation 40–70%, lightness 30–50%, and alpha 0.2–0.6.
-     */
-    function getGradientColor(row, col) {
-        // Calculate hue based on position in the grid
-        // This ensures the colors flow properly across the grid
-        const hueBase = 240; // Blue base
-        const hueRange = 60; // Up to purple
-        
-        // Normalize position to 0-1 range
-        const normalizedPos = (row + col) / (gridSize * 2 - 2);
-        
-        // Calculate final hue
-        const hue = hueBase + normalizedPos * hueRange;
-        
-        // Add some randomness to saturation and lightness
-        const saturation = Math.floor(Math.random() * 20) + 60; // 60-80%
-        const lightness = Math.floor(Math.random() * 15) + 35; // 35-50%
-        const alpha = 0.9; // High alpha for better visibility
-        
-        return `hsla(${hue}, ${saturation}%, ${lightness}%, ${alpha})`;
-    }
-    
-    /**
-     * Checks if all grid cells are flipped and, if so, applies a pulsing animation to the grid container.
-     */
-    function checkAllFlipped() {
-        const allFlipped = cells.every(cell => cell.classList.contains('flipped'));
-        if (allFlipped) {
-            // Add a pulsing effect to the entire grid when all cells are flipped
-            gridContainer.style.animation = 'pulse 2s infinite';
-            
-            // Create a special completion effect
-            createCompletionEffect();
-        } else {
-            // Remove animation if not all cells are flipped
-            gridContainer.style.animation = '';
-        }
-    }
-    
-    /**
-     * Creates a special effect when all cells are flipped
-     */
-    function createCompletionEffect() {
-        // Get the container dimensions
-        const container = document.querySelector('.container');
-        const rect = container.getBoundingClientRect();
-        
-        // Create a central burst of particles
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-        
-        // Create many particles in a circular burst
-        for (let i = 0; i < 100; i++) {
-            setTimeout(() => {
-                const angle = Math.random() * Math.PI * 2;
-                const distance = Math.random() * 150 + 50;
-                const x = centerX + Math.cos(angle) * (distance / 4);
-                const y = centerY + Math.sin(angle) * (distance / 4);
-                
-                // Create particle with a random hue in the purple range
-                const hue = Math.random() * 60 + 240;
-                createParticles(x, y, 3, hue);
-                
-                if (i % 10 === 0) {
-                    createGlowEffects(x, y, 1, hue);
-                }
-                
-                if (i % 20 === 0) {
-                    createRippleEffects(x, y, 1, hue);
-                }
-            }, i * 20); // Stagger the creation for a more dynamic effect
-        }
-        
-        // Create floating elements that drift around
-        createFloatingElements();
-        
-        // Create a grand finale canvas effect
-        createGrandFinaleEffect(centerX, centerY);
-    }
-    
-    /**
-     * Creates a spectacular grand finale effect on the canvas
-     * @param {number} centerX - The x-coordinate of the center
-     * @param {number} centerY - The y-coordinate of the center
-     */
-    function createGrandFinaleEffect(centerX, centerY) {
-        // Create a vortex of particles
-        for (let i = 0; i < 200; i++) {
-            setTimeout(() => {
-                const angle = (i / 200) * Math.PI * 10; // Spiral pattern
-                const distance = i * 0.5;
-                const x = centerX + Math.cos(angle) * distance;
-                const y = centerY + Math.sin(angle) * distance;
-                
-                // Create canvas particles with special properties
-                const hue = (i / 200) * 60 + 240; // Gradual color change
-                
-                canvasParticles.push({
-                    x,
-                    y,
-                    size: Math.random() * 4 + 2,
-                    speedX: Math.cos(angle + Math.PI/2) * 2,
-                    speedY: Math.sin(angle + Math.PI/2) * 2,
-                    life: Math.random() * 100 + 100,
-                    fullLife: 200,
-                    color: `hsla(${hue}, 90%, 60%, 0.8)`,
-                    glow: true
-                });
-                
-                // Start animation if not running
-                if (!animationLoopRunning) {
-                    animationLoopRunning = true;
-                    animateCanvasParticles();
-                }
-            }, i * 10);
-        }
-        
-        // Create a shockwave effect
-        setTimeout(() => {
-            createShockwaveEffect(centerX, centerY);
-        }, 2000);
-    }
-    
-    /**
-     * Creates a shockwave effect on the canvas
-     * @param {number} x - The x-coordinate of the center
-     * @param {number} y - The y-coordinate of the center
-     */
-    function createShockwaveEffect(x, y) {
-        let radius = 10;
-        const maxRadius = Math.max(canvas.width, canvas.height);
-        const speed = 5;
-        let opacity = 1;
-        
-        function drawShockwave() {
-            ctx.save();
-            ctx.beginPath();
-            ctx.arc(x, y, radius, 0, Math.PI * 2);
-            ctx.lineWidth = 15;
-            ctx.strokeStyle = `hsla(260, 80%, 50%, ${opacity})`;
-            ctx.stroke();
-            
-            // Create trailing shockwaves
-            ctx.beginPath();
-            ctx.arc(x, y, radius * 0.8, 0, Math.PI * 2);
-            ctx.lineWidth = 8;
-            ctx.strokeStyle = `hsla(280, 90%, 60%, ${opacity * 0.7})`;
-            ctx.stroke();
-            
-            ctx.beginPath();
-            ctx.arc(x, y, radius * 0.6, 0, Math.PI * 2);
-            ctx.lineWidth = 4;
-            ctx.strokeStyle = `hsla(300, 100%, 70%, ${opacity * 0.5})`;
-            ctx.stroke();
-            ctx.restore();
-            
-            // Update for next frame
-            radius += speed;
-            opacity = 1 - (radius / maxRadius);
-            
-            if (opacity > 0) {
-                requestAnimationFrame(drawShockwave);
-            }
-        }
-        
-        drawShockwave();
-    }
-    
-    /**
-     * Creates floating decorative elements after completion
-     */
-    function createFloatingElements() {
-        const container = document.querySelector('.container');
-        const rect = container.getBoundingClientRect();
-        
-        for (let i = 0; i < 15; i++) {
-            const floater = document.createElement('div');
-            floater.style.position = 'absolute';
-            floater.style.pointerEvents = 'none';
-            
-            // Random size
-            const size = Math.random() * 20 + 10;
-            floater.style.width = `${size}px`;
-            floater.style.height = `${size}px`;
-            
-            // Random position within container
-            const x = Math.random() * rect.width;
-            const y = Math.random() * rect.height;
-            floater.style.left = `${x}px`;
-            floater.style.top = `${y}px`;
-            
-            // Random color in our theme
-            const hue = Math.random() * 60 + 240;
-            floater.style.backgroundColor = `hsla(${hue}, 80%, 60%, 0.2)`;
-            floater.style.borderRadius = '50%';
-            floater.style.boxShadow = `0 0 ${size}px ${size/2}px hsla(${hue}, 80%, 60%, 0.3)`;
-            
-            // Random float animation
-            const floatY = (Math.random() - 0.5) * 50;
-            const floatR = (Math.random() - 0.5) * 180;
-            floater.style.setProperty('--float-y', `${floatY}px`);
-            floater.style.setProperty('--float-r', `${floatR}deg`);
-            
-            const duration = Math.random() * 3 + 2;
-            floater.style.animation = `float ${duration}s ease-in-out infinite`;
-            
-            // Add to container
-            particlesContainer.appendChild(floater);
-        }
-    }
-    
-    // Initialize the grid when the DOM is loaded
-    initializeGrid();
-    
-    // Apply the gradient colors to each cell after a short delay
-    setTimeout(() => {
-        cells.forEach((cell, index) => {
-            const row = Math.floor(index / gridSize);
-            const col = index % gridSize;
-            
-            // Set the gradient color for this cell's ::before element
-            cell.style.setProperty('--cell-color', getGradientColor(row, col));
-            
-            // Apply the CSS variable to the ::before element
-            const style = document.createElement('style');
-            style.textContent = `
-                #${cell.id}::before {
-                    background: var(--cell-color);
-                }
+            glow.style.cssText = `
+                left: ${x - size/2}px;
+                top: ${y - size/2}px;
+                width: ${size}px;
+                height: ${size}px;
+                animation: glow-pulse ${duration}ms ease-out forwards;
             `;
-            document.head.appendChild(style);
             
-            // Initialize cell state
-            cell.dataset.animating = 'false';
-        });
-    }, 100);
-    
-    // Fix for any browser-specific issues with 3D transforms
-    document.addEventListener('click', function(e) {
-        if (e.target.classList.contains('cell')) {
-            // Force repaint to ensure proper rendering
-            e.target.style.transform = e.target.style.transform;
+            this.elements.particlesContainer.appendChild(glow);
+            this.state.domParticles.add(glow);
+            
+            setTimeout(() => {
+                this.removeParticle(glow);
+            }, duration);
         }
-    }, true);
-}); 
+    }
+
+    /**
+     * Remove particle from DOM and tracking
+     * @param {HTMLElement} particle - Particle element to remove
+     */
+    removeParticle(particle) {
+        if (particle && particle.parentNode) {
+            particle.parentNode.removeChild(particle);
+            this.state.domParticles.delete(particle);
+        }
+    }
+
+    /**
+     * Clean up old particles to prevent memory issues
+     */
+    cleanupOldParticles() {
+        const particlesArray = Array.from(this.state.domParticles);
+        const toRemove = particlesArray.slice(0, Math.floor(particlesArray.length / 2));
+        
+        toRemove.forEach(particle => {
+            this.removeParticle(particle);
+        });
+    }
+
+    /**
+     * Clear all particles (used in reset)
+     */
+    clearAllParticles() {
+        // Clear canvas particles
+        this.state.canvasParticles = [];
+        
+        // Clear DOM particles
+        this.state.domParticles.forEach(particle => {
+            if (particle.parentNode) {
+                particle.parentNode.removeChild(particle);
+            }
+        });
+        this.state.domParticles.clear();
+        
+        // Cancel animation frame
+        if (this.rafId) {
+            cancelAnimationFrame(this.rafId);
+            this.rafId = null;
+        }
+        
+        this.state.animationLoopRunning = false;
+    }
+
+    /**
+     * Get random rotation animation style
+     * @returns {Object} Animation style object
+     */
+    getRandomRotationStyle() {
+        const styles = [
+            { animation: 'rotate-scale 0.8s ease forwards' },
+            { animation: 'flip-in 0.8s ease forwards' },
+            { animation: 'spin-out 0.8s ease forwards' },
+            { animation: 'pulse 0.8s ease forwards' }
+        ];
+        return styles[Math.floor(Math.random() * styles.length)];
+    }
+
+    /**
+     * Check if all cells are flipped and trigger completion effect
+     */
+    checkAllFlipped() {
+        const totalCells = this.config.gridSize * this.config.gridSize;
+        
+        if (this.state.flippedCount === totalCells && !this.state.completionEffectActive) {
+            this.state.completionEffectActive = true;
+            
+            // Announce completion
+            this.announceToScreenReader('Congratulations! All cells are flipped. Completion animation starting.');
+            
+            setTimeout(() => {
+                this.createCompletionEffect();
+            }, 500);
+        }
+    }
+
+    /**
+     * Create completion effect when all cells are flipped
+     */
+    createCompletionEffect() {
+        try {
+            const containerRect = this.elements.container.getBoundingClientRect();
+            const centerX = containerRect.width / 2;
+            const centerY = containerRect.height / 2;
+            
+            this.createGrandFinaleEffect(centerX, centerY);
+            
+            // Reset after effect
+            setTimeout(() => {
+                this.state.completionEffectActive = false;
+                this.announceToScreenReader('Completion animation finished.');
+            }, 5000);
+        } catch (error) {
+            console.error('Completion effect failed:', error);
+            this.state.completionEffectActive = false;
+        }
+    }
+
+    /**
+     * Create grand finale effect
+     * @param {number} centerX - Center X coordinate
+     * @param {number} centerY - Center Y coordinate
+     */
+    createGrandFinaleEffect(centerX, centerY) {
+        // Create burst of particles
+        for (let i = 0; i < 100; i++) {
+            const angle = (Math.PI * 2 * i) / 100;
+            const distance = Math.random() * 300 + 100;
+            const size = Math.random() * 12 + 6;
+            
+            const particle = document.createElement('div');
+            particle.className = 'particle';
+            particle.style.cssText = `
+                left: ${centerX}px;
+                top: ${centerY}px;
+                width: ${size}px;
+                height: ${size}px;
+                background: hsl(${Math.random() * 360}, 80%, 60%);
+                animation: particle-fade 3000ms ease-out forwards;
+                --tx: ${Math.cos(angle) * distance}px;
+                --ty: ${Math.sin(angle) * distance}px;
+            `;
+            
+            this.elements.particlesContainer.appendChild(particle);
+            this.state.domParticles.add(particle);
+            
+            setTimeout(() => {
+                this.removeParticle(particle);
+            }, 3000);
+        }
+    }
+
+    /**
+     * Announce message to screen readers
+     * @param {string} message - Message to announce
+     * @param {boolean} isAlert - Whether to use alert (assertive) or status (polite)
+     */
+    announceToScreenReader(message, isAlert = false) {
+        const targetElement = isAlert ? this.elements.alertElement : this.elements.statusElement;
+        if (targetElement) {
+            targetElement.textContent = message;
+            // Clear after a delay to avoid repeated announcements
+            setTimeout(() => {
+                targetElement.textContent = '';
+            }, 1000);
+        }
+    }
+
+    /**
+     * Pause animations for performance when tab is hidden
+     */
+    pauseAnimations() {
+        if (this.rafId) {
+            cancelAnimationFrame(this.rafId);
+            this.rafId = null;
+        }
+        this.state.animationLoopRunning = false;
+    }
+
+    /**
+     * Resume animations when tab becomes visible
+     */
+    resumeAnimations() {
+        if (this.state.canvasParticles.length > 0 && !this.state.animationLoopRunning) {
+            this.startAnimationLoop();
+        }
+    }
+
+    /**
+     * Show fallback message if initialization fails
+     */
+    showFallbackMessage() {
+        if (this.elements.container) {
+            this.elements.container.innerHTML = `
+                <div style="color: white; text-align: center; padding: 2rem;">
+                    <h2>Grid Animation</h2>
+                    <p>Sorry, this interactive grid requires a modern browser with JavaScript enabled.</p>
+                </div>
+            `;
+        }
+    }
+
+    /**
+     * Cleanup resources and event listeners
+     */
+    cleanup() {
+        // Cancel animation frame
+        if (this.rafId) {
+            cancelAnimationFrame(this.rafId);
+        }
+
+        // Clear timeouts
+        if (this.resizeTimeout) {
+            clearTimeout(this.resizeTimeout);
+        }
+
+        // Remove event listeners
+        window.removeEventListener('resize', this.handleResize);
+        
+        // Clear particles
+        this.clearAllParticles();
+
+        // Clear state
+        this.state.animationLoopRunning = false;
+        this.state.isInitialized = false;
+    }
+
+    /**
+     * Debounce function for performance optimization
+     * @param {Function} func - Function to debounce
+     * @param {number} wait - Wait time in milliseconds
+     * @returns {Function} Debounced function
+     */
+    debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+}
+
+// Initialize application when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+    try {
+        const app = new GridAnimationApp();
+        app.init();
+        
+        // Make app globally accessible for debugging
+        window.gridApp = app;
+    } catch (error) {
+        console.error('Failed to start Grid Animation App:', error);
+    }
+}, { once: true });
+
+// Handle module systems
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = GridAnimationApp;
+} 

@@ -2,15 +2,171 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grid Animation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="description" content="Interactive grid animation with particle effects. Click cells to flip them and create beautiful animations.">
+    <meta name="keywords" content="grid, animation, interactive, particles, javascript, css">
+    <meta name="author" content="Grid Animation App">
+    <meta name="theme-color" content="#2c1654">
+    <meta name="color-scheme" content="dark">
+    
+    <!-- Performance hints -->
+    <meta name="format-detection" content="telephone=no">
+    <meta name="msapplication-tap-highlight" content="no">
+    
+    <!-- Open Graph / Social Media -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Grid Animation">
+    <meta property="og:description" content="Interactive grid animation with particle effects">
+    <meta property="og:site_name" content="Grid Animation App">
+    
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Grid Animation">
+    <meta name="twitter:description" content="Interactive grid animation with particle effects">
+    
+    <title>Grid Animation - Interactive Particle Effects</title>
+    
+    <!-- Preload critical resources -->
+    <link rel="preload" href="styles.css" as="style">
+    <link rel="preload" href="script.js" as="script">
+    
+    <!-- Stylesheets -->
     <link rel="stylesheet" href="styles.css">
+    
+    <!-- Favicon (placeholder) -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%232c1654'/><rect x='2' y='2' width='12' height='12' fill='none' stroke='%235a1b9a' stroke-width='1'/></svg>">
 </head>
 <body>
-    <div class="container">
-        <div id="grid"></div>
-        <canvas id="particleCanvas"></canvas>
-    </div>
-    <script src="script.js"></script>
+    <!-- Skip link for screen readers -->
+    <a href="#main" class="skip-link" aria-label="Skip to main content">Skip to main content</a>
+    
+    <!-- Main application container -->
+    <main id="main" role="main" aria-label="Interactive Grid Animation">
+        <div class="container" role="application" aria-label="Grid of interactive cells">
+            <!-- Screen reader instructions -->
+            <div class="sr-only" id="instructions">
+                Interactive grid with 81 cells arranged in a 9x9 pattern. 
+                Click or tap any cell to flip it and create particle effects. 
+                Try to flip all cells to see the completion animation.
+                Use arrow keys to navigate between cells and spacebar or enter to activate them.
+            </div>
+            
+            <!-- Grid container with accessibility features -->
+            <div id="grid" 
+                 role="grid" 
+                 aria-label="9x9 interactive grid" 
+                 aria-describedby="instructions"
+                 tabindex="0"
+                 data-total-cells="81"
+                 data-flipped-cells="0">
+                <!-- Grid cells will be dynamically generated here -->
+            </div>
+            
+            <!-- Canvas for particle effects -->
+            <canvas id="particleCanvas" 
+                    aria-hidden="true" 
+                    role="presentation"
+                    width="600" 
+                    height="600">
+                <!-- Fallback for browsers without canvas support -->
+                <p>Your browser does not support the HTML5 canvas element required for particle effects.</p>
+            </canvas>
+            
+            <!-- Status announcements for screen readers -->
+            <div id="status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+            <div id="alert" class="sr-only" role="alert" aria-live="assertive" aria-atomic="true"></div>
+        </div>
+        
+        <!-- Help/Instructions panel (initially hidden) -->
+        <div id="help-panel" class="help-panel" aria-hidden="true" role="dialog" aria-labelledby="help-title">
+            <div class="help-content">
+                <h2 id="help-title">How to Play</h2>
+                <ul>
+                    <li><strong>Mouse:</strong> Click on any cell to flip it</li>
+                    <li><strong>Keyboard:</strong> Use arrow keys to navigate, Space/Enter to flip</li>
+                    <li><strong>Touch:</strong> Tap any cell to flip it</li>
+                    <li><strong>Goal:</strong> Flip all cells to see the completion animation</li>
+                </ul>
+                <button id="close-help" aria-label="Close help panel">Close</button>
+            </div>
+        </div>
+        
+        <!-- Controls panel -->
+        <div class="controls" role="toolbar" aria-label="Grid controls">
+            <button id="help-button" 
+                    type="button" 
+                    aria-label="Show help and instructions"
+                    title="Show help and instructions">
+                <span aria-hidden="true">?</span>
+                <span class="sr-only">Help</span>
+            </button>
+            
+            <button id="reset-button" 
+                    type="button" 
+                    aria-label="Reset all cells to unflipped state"
+                    title="Reset grid">
+                <span aria-hidden="true">↺</span>
+                <span class="sr-only">Reset</span>
+            </button>
+            
+            <button id="mute-button" 
+                    type="button" 
+                    aria-label="Mute sound effects"
+                    title="Toggle sound"
+                    aria-pressed="false">
+                <span aria-hidden="true">🔊</span>
+                <span class="sr-only">Sound on</span>
+            </button>
+            
+            <!-- Progress indicator -->
+            <div class="progress-container" role="progressbar" 
+                 aria-label="Grid completion progress" 
+                 aria-valuenow="0" 
+                 aria-valuemin="0" 
+                 aria-valuemax="81">
+                <span class="progress-text"><span id="progress-current">0</span> / 81</span>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+    
+    <!-- Error boundary for graceful degradation -->
+    <noscript>
+        <div class="noscript-fallback">
+            <h1>Grid Animation</h1>
+            <p>This interactive grid animation requires JavaScript to function properly.</p>
+            <p>Please enable JavaScript in your browser to experience the full application.</p>
+            <div class="static-grid">
+                <!-- Static grid representation for no-JS users -->
+                <div class="static-cell"></div>
+                <div class="static-cell"></div>
+                <div class="static-cell"></div>
+                <div class="static-cell"></div>
+                <div class="static-cell"></div>
+                <div class="static-cell"></div>
+                <div class="static-cell"></div>
+                <div class="static-cell"></div>
+                <div class="static-cell"></div>
+            </div>
+        </div>
+    </noscript>
+    
+    <!-- Performance monitoring (optional) -->
+    <script>
+        // Basic performance monitoring
+        if ('performance' in window && 'measure' in performance) {
+            window.addEventListener('load', () => {
+                performance.mark('app-load-complete');
+                const loadTime = performance.getEntriesByType('navigation')[0].loadEventEnd - 
+                                performance.getEntriesByType('navigation')[0].loadEventStart;
+                console.log(`App loaded in ${loadTime}ms`);
+            });
+        }
+    </script>
+    
+    <!-- Main application script -->
+    <script src="script.js" defer></script>
 </body>
 </html> 
